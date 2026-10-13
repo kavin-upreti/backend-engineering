@@ -58,7 +58,7 @@ func (t *TTLStore) Get(key string) (string, error) {
 		// deleted on demand.
 		delete(t.data, key)
 
-		return "", fmt.Errorf("key %s does not exist", key)
+		return "", fmt.Errorf("key %q does not exist", key)
 	}
 
 	return entry.value, nil

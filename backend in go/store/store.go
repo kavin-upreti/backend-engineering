@@ -11,7 +11,7 @@ var ErrMaxCapacity = errors.New("Maximum capacity of store has been reached")
 type Storer interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
-	// Keys() []string
+	Keys() []string
 	Delete(key string)
 	Len() int
 }

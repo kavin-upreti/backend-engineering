@@ -12,6 +12,26 @@ type Store struct {
 	maxSize int // 0 = unlimited
 }
 
+func (s *Store) Clone() *Store {
+	// return &Store{
+	// 	data:    s.data,
+	// 	maxSize: s.maxSize,
+	// }
+	// if i returned this, updating the clone would update the original too as data = s.data is a map
+	// and map is address by default
+
+	cp := &Store{
+		data:    make(map[string]string, len(s.data)),
+		maxSize: s.maxSize,
+	}
+
+	for k, v := range s.data {
+		cp.data[k] = v
+	}
+
+	return cp
+}
+
 // returns every key in the store sorted alphabetically
 func (s *Store) Keys() []string {
 	// first we wrote the test in store_test.go
@@ -39,7 +59,7 @@ func (s *Store) Get(key string) (string, error) {
 	val, ok := s.data[key]
 
 	if !ok {
-		return "", fmt.Errorf("Key %s does not exist", key)
+		return "", fmt.Errorf("Key %q does not exist", key)
 	}
 	return val, nil
 }

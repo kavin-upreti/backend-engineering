@@ -3,34 +3,40 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+
 	"store/store"
 	"store/store/kv"
-	"store/store/ttl"
-	"time"
 )
 
 func main() {
-	kvstore := kv.NewStore(20)
-	encrypted, err := SetKeyWithEncryption(kvstore, "a", "hey you cant see me lol")
+	kvStore := kv.NewStore(20)
+	PopulateDefaults(kvStore)
 
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(encrypted)
+	newstore := kvStore.Clone()
+	newstore.Set("env", "production")
 
-	ttlStore := ttl.NewTTLStore(time.Second * 2)
-	encryptedTtlValue, err := SetKeyWithEncryption(ttlStore, "a", "hey you cant see me lol")
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(encryptedTtlValue)
+	fmt.Println(*kvStore)
+	fmt.Println(*newstore)
+	// this updated both to production, even kvstore and newstore
+	// because the clone returns a pointer as it is a map
+	// and a map is default a pointer
 
 }
 
-// storer is an interface so both normal store and ttlstore have it
+func PopulateDefaults(s store.Storer) error {
+	defaults := map[string]string{
+		"env":     "development",
+		"version": "0.0.1",
+		"debug":   "true",
+	}
+	for k, v := range defaults {
+		if err := s.Set(k, v); err != nil {
+			return fmt.Errorf("PopulateDefaults: %w", err)
+		}
+	}
+	return nil
+}
+
 func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(val))
 	if err := store.Set(key, encoded); err != nil {
@@ -38,3 +44,22 @@ func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
 	}
 	return store.Get(key)
 }
+
+// func CreateStore(maxSize int) store.Storer {
+// 	plain := kv.NewStore(maxSize)
+// 	logger := NewLoggingMiddleware(plain)
+// 	metrics := NewMetricsMiddleware(logger)
+// 	return metrics
+// }
+
+// func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
+// 	encoded := base64.StdEncoding.EncodeToString([]byte(val))
+// 	if err := store.Set(key, encoded); err != nil {
+// 		return "", err
+// 	}
+
+// 	store.Len()
+// 	store.Get("key")
+
+// 	return store.Get(key)
+// }
