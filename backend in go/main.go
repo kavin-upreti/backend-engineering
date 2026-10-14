@@ -2,37 +2,37 @@ package main
 
 import (
 	"fmt"
-	"store/store/kv"
-	"sync"
+	"math/rand/v2"
 	"time"
 )
 
-// Benchmark: how long do many concurrent readers take?
-//
-// Run it once now, then refactor the store Lock to RLock
-//   - With sync.Mutex:   1143.906 ms
-//   - With sync.RWMutex: 11.629 ms
+// we couldnt communicate data from the goroutines to the main code
+// handling/sending data from goroutines isnt easy
+// so we need channels for this
+// solves the idea of sending data from goroutines to other goroutines
 func main() {
-	store := kv.NewStore(0)
-	store.Set("name", "jane")
+	results := make(chan int, 1) // unbuffered channels, blocks program until someone reads
+	// 1 means that hold 1 value(s) without anyone receiving them yet
+	/*
+		ch := make(chan int, 2)
+		ch <- 1 // doesn't block, buffer has room
+		ch <- 2 // doesn't block, buffer now full
+		// ch <- 3 would block here until someone receives
+		fmt.Println(<-ch, <-ch) // 1 2
+	*/
 
-	const readers = 100
-	const readsEach = 10
+	go worker(results)
+	go worker(results)
 
-	start := time.Now()
-	var wg sync.WaitGroup
-	for range readers {
-		wg.Go(func() {
-			for range readsEach {
-				store.Get("name") // this is what we want to optimise with RWMutex
-				// with Mutex, it will take some time
-				// with RWMutex it is quicker
-			}
-		})
-	}
-	wg.Wait()
+	fmt.Println(<-results, <-results) // to read
+	// started 2 workers so can only print twice btw, if I did it thrice then deadlock hit
+	// why? because first <-results waits, then worker sends smth
+	// so for third <-results, it is waiting but no worker is left to send
+}
 
-	elapsed := time.Since(start)
-	fmt.Printf("%d readers did %d concurrent reads in %.3fms\n",
-		readers, readers*readsEach, float64(elapsed.Microseconds())/1000)
+func worker(results chan<- int) { // results <-chan int means you can read only, chan<- means send from worker
+	// without <- anywhere its read and write
+	time.Sleep(time.Second)
+	// we want to communicate this thing below to our main
+	results <- rand.IntN(100)
 }
