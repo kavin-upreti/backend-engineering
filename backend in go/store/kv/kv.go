@@ -3,6 +3,7 @@ package kv
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"store/store"
 )
@@ -30,6 +31,37 @@ func (s *Store) Clone() *Store {
 	}
 
 	return cp
+
+	/*
+		kvStore := kv.NewStore(20)
+		PopulateDefaults(kvStore)
+
+		newstore := kvStore.Clone()
+		newstore.Set("env", "production")
+
+		fmt.Println(*kvStore)
+		fmt.Println(*newstore)
+		// this would update both to production, kvstore and newstore
+		// because the clone returns a pointer as it is a map
+		// and a map is default a pointer
+		// that is why we updated our Clone func
+
+		this was in main.go earlier
+
+		func PopulateDefaults(s store.Storer) error {
+			defaults := map[string]string{
+				"env":     "development",
+				"version": "0.0.1",
+				"debug":   "true",
+			}
+			for k, v := range defaults {
+				if err := s.Set(k, v); err != nil {
+					return fmt.Errorf("PopulateDefaults: %w", err)
+				}
+			}
+			return nil
+		}
+	*/
 }
 
 // returns every key in the store sorted alphabetically
@@ -68,6 +100,8 @@ func (s *Store) Set(key, value string) error {
 	if key == "" {
 		return store.ErrEmptyKey
 	}
+	// this is for the goroutines example, uncomment to test
+	time.Sleep(time.Second)
 	_, exists := s.data[key]
 	if s.maxSize > 0 && s.Len() >= s.maxSize && !exists {
 		return fmt.Errorf("Set(%q): %w", key, store.ErrMaxCapacity)

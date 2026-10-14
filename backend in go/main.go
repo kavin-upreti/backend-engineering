@@ -1,26 +1,30 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 
 	"store/store"
 	"store/store/kv"
 )
 
+// in sequential prog, inserting 50 keys where 1 key takes an avg 1 sec would take 50s
+// but in concurrent prog (goroutines), inserting 50 keys would take same time as the key taking longest
+// to make a func concurrent, define it as "go func()" instead of "func()"
 func main() {
-	kvStore := kv.NewStore(20)
-	PopulateDefaults(kvStore)
+	cmds := []Command{
+		{Op: "SET", Key: "env", Value: "production"},
+		{Op: "SET", Key: "version", Value: "0.0.1"},
+		{Op: "SET", Key: "debug", Value: "true"},
+		{Op: "GET", Key: "env"},
+		{Op: "SET", Key: "region", Value: "eu-west-1"},
+		{Op: "GET", Key: "version"},
+	}
 
-	newstore := kvStore.Clone()
-	newstore.Set("env", "production")
+	s := kv.NewStore(0)
+	RestoreOnBoot(s, cmds)
 
-	fmt.Println(*kvStore)
-	fmt.Println(*newstore)
-	// this updated both to production, even kvstore and newstore
-	// because the clone returns a pointer as it is a map
-	// and a map is default a pointer
-
+	fmt.Println("restored, store size:", s.Len())
+	fmt.Println("keys:", s.Keys())
 }
 
 func PopulateDefaults(s store.Storer) error {
@@ -37,13 +41,13 @@ func PopulateDefaults(s store.Storer) error {
 	return nil
 }
 
-func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
-	encoded := base64.StdEncoding.EncodeToString([]byte(val))
-	if err := store.Set(key, encoded); err != nil {
-		return "", err
-	}
-	return store.Get(key)
-}
+// func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
+// 	encoded := base64.StdEncoding.EncodeToString([]byte(val))
+// 	if err := store.Set(key, encoded); err != nil {
+// 		return "", err
+// 	}
+// 	return store.Get(key)
+// }
 
 // func CreateStore(maxSize int) store.Storer {
 // 	plain := kv.NewStore(maxSize)
@@ -51,12 +55,6 @@ func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
 // 	metrics := NewMetricsMiddleware(logger)
 // 	return metrics
 // }
-
-// func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
-// 	encoded := base64.StdEncoding.EncodeToString([]byte(val))
-// 	if err := store.Set(key, encoded); err != nil {
-// 		return "", err
-// 	}
 
 // 	store.Len()
 // 	store.Get("key")
