@@ -3,22 +3,36 @@ package main
 import (
 	"fmt"
 	"store/store/kv"
+	"sync"
+	"time"
 )
 
+// Benchmark: how long do many concurrent readers take?
+//
+// Run it once now, then refactor the store Lock to RLock
+//   - With sync.Mutex:   1143.906 ms
+//   - With sync.RWMutex: 11.629 ms
 func main() {
-	s := kv.NewStore(0)
+	store := kv.NewStore(0)
+	store.Set("name", "jane")
 
-	s.Set("pageviews", "0")
+	const readers = 100
+	const readsEach = 10
 
-	const hits = 1000
-	cmds := make([]Command, hits)
-	for i := range cmds {
-		cmds[i] = Command{Op: "INCR", Key: "pageviews"}
+	start := time.Now()
+	var wg sync.WaitGroup
+	for range readers {
+		wg.Go(func() {
+			for range readsEach {
+				store.Get("name") // this is what we want to optimise with RWMutex
+				// with Mutex, it will take some time
+				// with RWMutex it is quicker
+			}
+		})
 	}
+	wg.Wait()
 
-	RestoreOnBoot(s, cmds)
-
-	got, _ := s.Get("pageviews")
-	fmt.Printf("expected: %d\n", hits)
-	fmt.Printf("got:      %s\n", got)
+	elapsed := time.Since(start)
+	fmt.Printf("%d readers did %d concurrent reads in %.3fms\n",
+		readers, readers*readsEach, float64(elapsed.Microseconds())/1000)
 }

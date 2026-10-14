@@ -11,7 +11,12 @@ import (
 )
 
 type Store struct {
-	mu sync.Mutex
+	mu sync.RWMutex
+	// RWMutex is read write mutex, used for when reads are more often than writes
+	// for our redis our client will read more rather than write so here it is useful
+	// allows multiple readers simultaneously but only 1 write at a time, more efficient in read-heavy scenarios
+	// 1000 goroutines can hold the read lock at the same time, read locks don't block each other
+	// Rlock() is read lock, Lock() is full lock for write
 
 	data    map[string]string
 	maxSize int // 0 = unlimited
@@ -24,8 +29,8 @@ func (s *Store) Clone() *Store {
 	// }
 	// if i returned this, updating the clone would update the original too as data = s.data is a map
 	// and map is address by default
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	cp := &Store{
 		data:    make(map[string]string, len(s.data)),
 		maxSize: s.maxSize,
@@ -73,8 +78,8 @@ func (s *Store) Clone() *Store {
 func (s *Store) Keys() []string {
 	// first we wrote the test in store_test.go
 	// then we do it here
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	keys := make([]string, 0, len(s.data))
 	for key := range s.data {
 		keys = append(keys, key)
@@ -94,8 +99,9 @@ func (s *Store) Get(key string) (string, error) {
 	if key == "" {
 		return "", store.ErrEmptyKey
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	time.Sleep(time.Millisecond) // simulate a slow read (for the Mutex vs RWMutex benchmark)
 	val, ok := s.data[key]
 
 	if !ok {
@@ -122,17 +128,19 @@ func (s *Store) Set(key, value string) error {
 
 	s.data[key] = value
 	return nil
+	// edits original state so just lock and unlock
 }
 
 func (s *Store) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, key)
+	// this edits the original state so just Lock and Unlock
 }
 
 func (s *Store) Len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return len(s.data)
 }
 
