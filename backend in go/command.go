@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"store/store"
 	"sync"
 )
@@ -14,7 +14,7 @@ type Command struct {
 }
 
 // dispatch is a tiny switch that turns a Command into a store call.
-func dispatch(s store.Storer, c Command) {
+func dispatch(s store.Storer, c Command) error {
 	// Challenge #1: Implement the dispatcher, it receives a command and
 	// parses it to call the appropriate store method.
 	// ex:
@@ -22,23 +22,36 @@ func dispatch(s store.Storer, c Command) {
 	// it's a SET then call s.Set("env", "production")
 	switch c.Op {
 	case "SET":
-		log.Printf("SET key %s", c.Key)
-		s.Set(c.Key, c.Value)
-	case "GET":
-		s.Get(c.Key)
+		return s.Set(c.Key, c.Value)
 	case "INCR":
-		s.Incr(c.Key)
+		_, err := s.Incr(c.Key)
+		return err
+	default:
+		return fmt.Errorf("unknown operation %q encountered", c.Op)
 	}
 }
 
 // RestoreOnBoot replays a slice of commands against the store.
 func RestoreOnBoot(s store.Storer, cmds []Command) {
 	var wg sync.WaitGroup
-
+	errs := make(chan error, len(cmds))
 	for _, c := range cmds {
 		wg.Go(func() {
-			dispatch(s, c)
+			errs <- dispatch(s, c)
 		})
 	}
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(errs)
+	}()
+	// if we didnt close the channel, the loop below (err := range errs) would go forever; deadlock
+	// we want to close it after all of the goroutines are done with their stuff
+
+	// lets log the errors we get from a channel for now
+	for err := range errs {
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+	}
+
 }

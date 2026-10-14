@@ -2,37 +2,28 @@ package main
 
 import (
 	"fmt"
-	"math/rand/v2"
-	"time"
+	"store/store/kv"
 )
 
-// we couldnt communicate data from the goroutines to the main code
-// handling/sending data from goroutines isnt easy
-// so we need channels for this
-// solves the idea of sending data from goroutines to other goroutines
 func main() {
-	results := make(chan int, 1) // unbuffered channels, blocks program until someone reads
-	// 1 means that hold 1 value(s) without anyone receiving them yet
-	/*
-		ch := make(chan int, 2)
-		ch <- 1 // doesn't block, buffer has room
-		ch <- 2 // doesn't block, buffer now full
-		// ch <- 3 would block here until someone receives
-		fmt.Println(<-ch, <-ch) // 1 2
-	*/
+	s := kv.NewStore(0)
 
-	go worker(results)
-	go worker(results)
+	s.Set("pageviews", "0")
 
-	fmt.Println(<-results, <-results) // to read
-	// started 2 workers so can only print twice btw, if I did it thrice then deadlock hit
-	// why? because first <-results waits, then worker sends smth
-	// so for third <-results, it is waiting but no worker is left to send
-}
+	const hits = 1000
+	cmds := make([]Command, hits)
+	for i := range cmds {
+		cmds[i] = Command{Op: "INCR", Key: "pageviews"}
+	}
 
-func worker(results chan<- int) { // results <-chan int means you can read only, chan<- means send from worker
-	// without <- anywhere its read and write
-	time.Sleep(time.Second)
-	// we want to communicate this thing below to our main
-	results <- rand.IntN(100)
+	cmds = append(cmds,
+		Command{Op: "INCR", Key: ""},         // empty key -> ErrEmptyKey
+		Command{Op: "WAT", Key: "pageviews"}, // unknown op
+	)
+
+	RestoreOnBoot(s, cmds)
+
+	got, _ := s.Get("pageviews")
+	fmt.Printf("expected: %d\n", hits)
+	fmt.Printf("got:      %s\n", got)
 }
