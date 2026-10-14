@@ -3,12 +3,16 @@ package kv
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"sync"
 	"time"
 
 	"store/store"
 )
 
 type Store struct {
+	mu sync.Mutex
+
 	data    map[string]string
 	maxSize int // 0 = unlimited
 }
@@ -20,7 +24,8 @@ func (s *Store) Clone() *Store {
 	// }
 	// if i returned this, updating the clone would update the original too as data = s.data is a map
 	// and map is address by default
-
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	cp := &Store{
 		data:    make(map[string]string, len(s.data)),
 		maxSize: s.maxSize,
@@ -68,6 +73,8 @@ func (s *Store) Clone() *Store {
 func (s *Store) Keys() []string {
 	// first we wrote the test in store_test.go
 	// then we do it here
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	keys := make([]string, 0, len(s.data))
 	for key := range s.data {
 		keys = append(keys, key)
@@ -87,7 +94,8 @@ func (s *Store) Get(key string) (string, error) {
 	if key == "" {
 		return "", store.ErrEmptyKey
 	}
-
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	val, ok := s.data[key]
 
 	if !ok {
@@ -97,13 +105,18 @@ func (s *Store) Get(key string) (string, error) {
 }
 
 func (s *Store) Set(key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if key == "" {
 		return store.ErrEmptyKey
 	}
 	// this is for the goroutines example, uncomment to test
 	time.Sleep(time.Second)
 	_, exists := s.data[key]
-	if s.maxSize > 0 && s.Len() >= s.maxSize && !exists {
+	// if we continue using s.Len() in here, we will have a deadlock
+	// because s.Len() and Set both have a lock on the same thing
+	// go's mutexes are not reentrant
+	if s.maxSize > 0 && len(s.data) >= s.maxSize && !exists {
 		return fmt.Errorf("Set(%q): %w", key, store.ErrMaxCapacity)
 	}
 
@@ -112,9 +125,43 @@ func (s *Store) Set(key, value string) error {
 }
 
 func (s *Store) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.data, key)
 }
 
 func (s *Store) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return len(s.data)
+}
+
+// Incr increments the integer value stored at key by 1.
+// If the key doesn't exist, it's initialized to 0 before incrementing.
+// Mirrors Redis' INCR command.
+func (s *Store) Incr(key string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if key == "" {
+		return 0, store.ErrEmptyKey
+	}
+
+	// READ
+	current := 0
+	if raw, ok := s.data[key]; ok {
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, fmt.Errorf("INCR %q: %w", key, err)
+		}
+		current = v
+	}
+
+	// MODIFY
+	current++
+	time.Sleep(time.Microsecond) // simulate some xyz work
+
+	// WRITE
+	s.data[key] = strconv.Itoa(current)
+
+	return current, nil
 }

@@ -14,4 +14,5 @@ type Storer interface {
 	Keys() []string
 	Delete(key string)
 	Len() int
+	Incr(key string) (int, error)
 }
