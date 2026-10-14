@@ -2,62 +2,52 @@ package main
 
 import (
 	"fmt"
-
-	"store/store"
-	"store/store/kv"
+	"sync"
+	"time"
 )
 
 // in sequential prog, inserting 50 keys where 1 key takes an avg 1 sec would take 50s
 // but in concurrent prog (goroutines), inserting 50 keys would take same time as the key taking longest
 // to make a func concurrent, define it as "go func()" instead of "func()"
+var (
+	counter int
+	mu      sync.Mutex // mutual exclusion
+)
+
+func increment() {
+	mu.Lock()
+	defer mu.Unlock() // just execute at the end, write it here so you dont forget
+	v := counter
+	time.Sleep(time.Microsecond) // simulate a db query
+	counter = v + 1
+
+	// mu.Unlock()
+}
+
 func main() {
-	cmds := []Command{
-		{Op: "SET", Key: "env", Value: "production"},
-		{Op: "SET", Key: "version", Value: "0.0.1"},
-		{Op: "SET", Key: "debug", Value: "true"},
-		{Op: "GET", Key: "env"},
-		{Op: "SET", Key: "region", Value: "eu-west-1"},
-		{Op: "GET", Key: "version"},
+	expected := 1000
+	var wg sync.WaitGroup
+	for i := 0; i < expected; i++ {
+		wg.Add(1)
+		go func() {
+			increment()
+			defer wg.Done()
+		}()
 	}
+	wg.Wait()
+	fmt.Println("Counter: ", counter)
+	fmt.Println("Expected: ", expected)
 
-	s := kv.NewStore(0)
-	RestoreOnBoot(s, cmds)
+	// WITHOUT MU AND MU.LOCK() AND DEFER MU.UNLOCK()
+	// this would have very varied values of counter and expected
+	// this is because of race conditions: multiple threads are trying to incrmeent the same var at the same time
+	// and so a lot of it is overriden:
+	// thread 1 tried to get counter from 5 to 6 and did it
+	// but thread 2 tried it at the same time too
+	// and so instead of it going from 6 to 7 due to thread 2, it will just stay from 5 to 6
+	// go can solve this though using .lock
+	// so you hold the lock during the entire duration of you writing the value
+	// so every other thread waits in line
 
-	fmt.Println("restored, store size:", s.Len())
-	fmt.Println("keys:", s.Keys())
+	// but here since we have used those things we get the desired output (1000 and 1000 both)
 }
-
-func PopulateDefaults(s store.Storer) error {
-	defaults := map[string]string{
-		"env":     "development",
-		"version": "0.0.1",
-		"debug":   "true",
-	}
-	for k, v := range defaults {
-		if err := s.Set(k, v); err != nil {
-			return fmt.Errorf("PopulateDefaults: %w", err)
-		}
-	}
-	return nil
-}
-
-// func SetKeyWithEncryption(store store.Storer, key, val string) (string, error) {
-// 	encoded := base64.StdEncoding.EncodeToString([]byte(val))
-// 	if err := store.Set(key, encoded); err != nil {
-// 		return "", err
-// 	}
-// 	return store.Get(key)
-// }
-
-// func CreateStore(maxSize int) store.Storer {
-// 	plain := kv.NewStore(maxSize)
-// 	logger := NewLoggingMiddleware(plain)
-// 	metrics := NewMetricsMiddleware(logger)
-// 	return metrics
-// }
-
-// 	store.Len()
-// 	store.Get("key")
-
-// 	return store.Get(key)
-// }
