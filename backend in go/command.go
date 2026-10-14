@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"store/store"
+	"sync"
 )
 
 // Command is a parsed Redis-ish operation: opcode plus its arguments.
@@ -30,15 +31,25 @@ func dispatch(s store.Storer, c Command) {
 
 // RestoreOnBoot replays a slice of commands against the store.
 func RestoreOnBoot(s store.Storer, cmds []Command) {
+	// THIS IS GOROUTINE SYNCHRONIZATION, SOLUTION TO THE PROBLEM BELOW IN COMMENTS
+	var wg sync.WaitGroup
 	for _, c := range cmds {
-		// without go before dispatch, it would take 4 seconds to happen
-		// because of the time.Sleep in set
-		// but with go, it takes 1, however the log prints dont happen
-		// because main got to the end before the goroutines were even scheduled
-		// so they never reached the log.Printf
-		go dispatch(s, c)
+		/*
+			wg go(func(){
+				dispatch(s, c)
+			})
+			this could also be used, is the recent version for the same thing below
+		*/
+		wg.Add(1) // bumps up counters of goroutines that are waiting by 1
+		// or we could have done wg.Add(len(cmds)) above loop
+		go func() {
+			defer wg.Done() // delays exec of func beside it to the end, so it says wg.Done() once entire func() finished
+			dispatch(s, c)
+		}()
 	}
+	wg.Wait() // block until every dispatch has finished
 
+	// this is without the waitgroup (past)
 	// if I add a time.Sleep(time.Second * 2) here, it will reach the log printf
 	// however in that case, all 4 goroutines reached m[key] = value at the same time
 	// so rather than corrupting the map, go crashes the program
@@ -61,4 +72,5 @@ func RestoreOnBoot(s store.Storer, cmds []Command) {
 				/Users/kavin/Desktop/Learning/Backend Engineering/backend in go/command.go:40 +0x58
 		exit status 2
 	*/
+	// this time.Sleep is also bad because what if one of the goroutines takes more than 1s
 }
